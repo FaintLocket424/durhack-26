@@ -24,6 +24,7 @@
           "3ds"
           "wii"
           "wiiu"
+          "xbox360"
         ];
 
         subprojectList = pkgs.lib.concatStringsSep " " subprojects;
