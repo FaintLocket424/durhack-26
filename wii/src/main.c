@@ -1,42 +1,88 @@
-#include <gccore.h>
+// Wii compute node: UI thread (status screen) + network thread (node_run)
+
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <ogcsys.h>
+#include <gccore.h>
 #include <wiiuse/wpad.h>
+
+#include "node.h"
+
+#define NODE_PORT	5555
 
 static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
 
+static node_t node = { .port = NODE_PORT };
+static lwp_t node_handle = (lwp_t)NULL;
+
+void *initialise();
+
+//---------------------------------------------------------------------------------
+static const char *state_name(node_state_t state) {
+//---------------------------------------------------------------------------------
+	switch (state) {
+		case NODE_STARTING:  return "configuring network";
+		case NODE_LISTENING: return "listening         ";
+		case NODE_CONNECTED: return "client connected  ";
+		default:             return "FAILED            ";
+	}
+}
+
+//---------------------------------------------------------------------------------
 int main(int argc, char **argv) {
-  (void)argc;
-  (void)argv;
+//---------------------------------------------------------------------------------
+	xfb = initialise();
 
-  VIDEO_Init();
-  WPAD_Init();
+	LWP_CreateThread(	&node_handle,	/* thread handle */
+						node_run,		/* code */
+						&node,			/* arg pointer for thread */
+						NULL,			/* stack base */
+						64*1024,		/* stack size */
+						50				/* thread priority */ );
 
-  rmode = VIDEO_GetPreferredMode(NULL);
-  xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
-  console_init(xfb, 20, 20, rmode->fbWidth, rmode->xfbHeight,
-               rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+	while(SYS_MainLoop()) {
 
-  VIDEO_Configure(rmode);
-  VIDEO_SetNextFramebuffer(xfb);
-  VIDEO_SetBlack(FALSE);
-  VIDEO_Flush();
-  VIDEO_WaitVSync();
-  if (rmode->viTVMode & VI_NON_INTERLACE)
-    VIDEO_WaitVSync();
+		printf("\x1b[2;0H");
+		printf("Wii compute node\n\n");
+		printf("state:        %s\n", state_name(node.state));
+		printf("address:      %s:%d\n", node.local_ip, node.port);
+		printf("connections:  %u\n", (unsigned)node.connections);
+		printf("requests:     %u\n", (unsigned)node.requests);
+		printf("errors:       %u (last: %d)\n", (unsigned)node.errors, node.last_error);
+		printf("\nHOME to quit\n");
 
-  printf("\x1b[2;0H");
-  printf("Hello from Nintendo Wii! Hamster... I miss you...\n");
-  printf("Press HOME to exit.\n");
+		VIDEO_WaitVSync();
+		WPAD_ScanPads();
 
-  while (1) {
-    WPAD_ScanPads();
-    u32 pressed = WPAD_ButtonsDown(0);
-    if (pressed & WPAD_BUTTON_HOME)
-      exit(0);
-    VIDEO_WaitVSync();
-  }
+		if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) break;
+	}
 
-  return 0;
+	node.stop = 1;
+	return 0;		// the thread may be blocked in accept(); process exit ends it
+}
+
+//---------------------------------------------------------------------------------
+void *initialise() {
+//---------------------------------------------------------------------------------
+
+	void *framebuffer;
+
+	VIDEO_Init();
+	WPAD_Init();
+
+	rmode = VIDEO_GetPreferredMode(NULL);
+	framebuffer = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
+	console_init(framebuffer,20,20,rmode->fbWidth,rmode->xfbHeight,rmode->fbWidth*VI_DISPLAY_PIX_SZ);
+
+	VIDEO_Configure(rmode);
+	VIDEO_SetNextFramebuffer(framebuffer);
+	VIDEO_SetBlack(false);
+	VIDEO_Flush();
+	VIDEO_WaitVSync();
+	if(rmode->viTVMode&VI_NON_INTERLACE) VIDEO_WaitVSync();
+
+	return framebuffer;
+
 }
