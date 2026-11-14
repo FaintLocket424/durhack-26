@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - "--target=powerpc-eabi"
+    - "-D__WIIU__"
+    - "-D__WUT__"
+  Remove:
+    - "-DESPRESSO"
+    - "-meabi"
+    - "-mhard-float"

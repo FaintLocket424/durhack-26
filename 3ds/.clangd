@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - "--target=arm-none-eabi"
+    - "-D__3DS__"
+  Remove:
+    - "-mword-relocations"
+    - "-fomit-frame-pointer"
+    - "-mtp=soft"

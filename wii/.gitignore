@@ -1,0 +1,8 @@
+build/
+*.dol
+*.elf
+*.map
+compile_commands.json
+.direnv/
+result
+llm_context.md

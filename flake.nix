@@ -21,7 +21,9 @@
         subprojects = [
           "arduino-q"
           "rpi5"
-          "test-c"
+          "3ds"
+          "wii"
+          "wiiu"
         ];
 
         subprojectList = pkgs.lib.concatStringsSep " " subprojects;
@@ -144,6 +146,9 @@
             elif [ -n "''${DISPLAY:-}" ] && command -v xclip >/dev/null 2>&1; then
               xclip -selection clipboard < "$OUTFILE"
               echo "Copied $OUTFILE to clipboard (via xclip)."
+            elif command -v clip.exe >/dev/null 2>&1; then
+              clip.exe < "$OUTFILE"
+              echo "Copied $OUTFILE to clipboard (via clip.exe)."
             fi
           '';
         };
