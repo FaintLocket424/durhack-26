@@ -159,37 +159,38 @@
             pkgs.arduino-cli;
 
         mkMpuPackage =
-          targetPkgs:
-          targetPkgs.stdenv.mkDerivation {
-            pname = "unoq-mpu";
-            version = "0.1.0";
-            src = ./.;
+      targetPkgs:
+      targetPkgs.stdenv.mkDerivation {
+        pname = "unoq-mpu";
+        version = "0.1.0";
+        src = ./.;
 
-            nativeBuildInputs = with pkgs; [
-              gnumake
-              pkg-config
-            ];
+        nativeBuildInputs = with pkgs; [
+          gnumake
+          pkg-config
+        ];
 
-            makeFlags = [
-              "CC=${targetPkgs.stdenv.cc.targetPrefix}cc"
-              "CXX=${targetPkgs.stdenv.cc.targetPrefix}c++"
-            ];
+        makeFlags = [
+          "CC=${targetPkgs.stdenv.cc.targetPrefix}cc"
+          "CXX=${targetPkgs.stdenv.cc.targetPrefix}c++"
+          "LDFLAGS=-static"  # <-- ADD THIS
+        ];
 
-            installPhase = ''
-              runHook preInstall
-              mkdir -p $out/bin
-              cp -f bin/* $out/bin/ 2>/dev/null || cp -f app $out/bin/
-              runHook postInstall
-            '';
+        installPhase = ''
+          runHook preInstall
+          mkdir -p $out/bin
+          cp -f bin/* $out/bin/ 2>/dev/null || cp -f app $out/bin/
+          runHook postInstall
+        '';
 
-            meta.mainProgram = "app";
-          };
+        meta.mainProgram = "app";
+      };
 
         buildMpuHelper = pkgs.writeShellScriptBin "build-mpu" ''
-          set -e
-          NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
-          bear -- make -j"$NPROC" "$@"
-        '';
+      set -e
+      NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+      bear -- make -j"$NPROC" LDFLAGS="-static" "$@"
+    '';
 
         cleanBuildMpuHelper = pkgs.writeShellScriptBin "rebuild-mpu" ''
           set -e
@@ -382,6 +383,7 @@
             export CXX="${crossPkgs.stdenv.cc.targetPrefix}c++"
             export AR="${crossPkgs.stdenv.cc.targetPrefix}ar"
             export STRIP="${crossPkgs.stdenv.cc.targetPrefix}strip"
+            export LDFLAGS="-static"
 
             if [ ! -f .clangd ]; then
               cat > .clangd << 'EOF'

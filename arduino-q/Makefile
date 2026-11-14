@@ -1,28 +1,30 @@
-CC       ?= aarch64-unknown-linux-musl-cc
-CXX      ?= aarch64-unknown-linux-musl-c++
-CFLAGS   ?= -Wall -Wextra -O2 -g -mcpu=cortex-a53
-CXXFLAGS ?= -Wall -Wextra -O2 -g -mcpu=cortex-a53
-LDFLAGS  ?=
+CXX ?= aarch64-unknown-linux-musl-c++
+CXXFLAGS = -std=c++17 -O2 -mcpu=cortex-a53 -Wall -Wextra
+LDFLAGS ?= -static
 
-TARGET   := bin/app
-SRCS     := $(wildcard src/*.c src/*.cpp)
-OBJS     := $(patsubst src/%, build/%.o, $(basename $(SRCS)))
+SRC_DIR = src
+BUILD_DIR = build
+BIN_DIR = bin
 
-.PHONY: all clean
+TARGET = $(BIN_DIR)/app
+SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	@mkdir -p $(dir $@)
-	$(if $(filter %.cpp,$(SRCS)),$(CXX),$(CC)) $(OBJS) -o $@ $(LDFLAGS)
+$(TARGET): $(OBJS) | $(BIN_DIR)
+	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
 
-build/%.o: src/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-build/%.o: src/%.cpp
-	@mkdir -p $(dir $@)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
 clean:
-	rm -rf build bin
+	rm -rf $(BUILD_DIR) $(BIN_DIR)
+
+.PHONY: all clean
