@@ -1,0 +1,8 @@
+.direnv/
+.zed/
+.clangd
+compile_commands.json
+llm_context.md
+build/
+bin/
+result
