@@ -17,7 +17,7 @@ CXXFLAGS := $(CFLAGS) -std=gnu++17
 LDFLAGS  = -g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 LIBS    := -lwiiuse -lbte -logc -lm
-LIBDIRS := $(PORTLIBS) $(LIBOGC)
+LIBDIRS := $(PORTLIBS)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -45,8 +45,10 @@ export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
 export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                    $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                   -I$(LIBOGC_INC) \
                    -I$(CURDIR)/$(BUILD)
-export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
+                   -L$(LIBOGC_LIB)
 
 .PHONY: $(BUILD) clean all
 
