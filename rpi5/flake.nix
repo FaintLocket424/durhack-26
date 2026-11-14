@@ -105,6 +105,7 @@
 
         deployHelper = pkgs.writeShellApplication {
           name = "deploy-rpi5";
+          excludeShellChecks = [ "SC2029" ];
           runtimeInputs = with pkgs; [
             findutils
             openssh

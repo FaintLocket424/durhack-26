@@ -133,6 +133,10 @@
 
         deployMpuHelper = pkgs.writeShellApplication {
           name = "deploy-mpu";
+          excludeShellChecks = [
+            "SC2016"
+            "SC2029"
+          ];
           runtimeInputs = with pkgs; [
             findutils
             android-tools
