@@ -44,8 +44,6 @@
               pkg-config
             ];
 
-            buildInputs = [ ];
-
             makeFlags = [
               "CC=${targetPkgs.stdenv.cc.targetPrefix}cc"
               "CXX=${targetPkgs.stdenv.cc.targetPrefix}c++"
@@ -64,13 +62,11 @@
         buildHelper = pkgs.writeShellScriptBin "build-rpi5" ''
           set -e
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
-          echo "🐻 Compiling for Raspberry Pi 5 (aarch64) with bear (-j$NPROC)..."
           bear -- make -j"$NPROC" "$@"
-          echo "✅ Done! Binary ready in bin/."
         '';
 
         cleanBuildHelper = pkgs.writeShellScriptBin "rebuild-rpi5" ''
-          echo "🧹 Cleaning previous build..."
+          set -e
           make clean
           build-rpi5 "$@"
         '';
@@ -93,17 +89,15 @@
             fi
 
             if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
-              echo "❌ No binary found! Running build first..."
+              echo "No binary found. Running build-rpi5..." >&2
               build-rpi5
               TARGET_FILE=$(find ./bin -maxdepth 1 -type f -executable | head -n 1)
             fi
 
             shift || true
             if [ "$(uname -m)" = "aarch64" ]; then
-              echo "🍓 Running $TARGET_FILE natively..."
               "$TARGET_FILE" "$@"
             else
-              echo "🕹️ Running $TARGET_FILE under qemu-aarch64..."
               qemu-aarch64 "$TARGET_FILE" "$@"
             fi
           '';
@@ -117,122 +111,27 @@
             rsync
           ];
           text = ''
-            TARGET_HOST="''${1:-''${RPI5_HOST:-pi@raspberrypi.local}}"
-            REMOTE_DIR="''${2:-~/homebrew}"
-            TARGET_FILE=$(find ./bin -maxdepth 1 -type f -executable 2>/dev/null | head -n 1 || true)
+            TARGET_HOST="''${1:-''${RPI5_HOST:-}}"
+            REMOTE_DIR="''${2:-homebrew}"
 
-            if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
-              if [ -d "./result/bin" ]; then
-                TARGET_FILE=$(find ./result/bin -maxdepth 1 -type f -executable | head -n 1 || true)
-              fi
-            fi
-
-            if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
-              echo "❌ No binary found! Run 'build-rpi5' or 'nix build' first."
+            if [ -z "$TARGET_HOST" ]; then
+              echo "Usage: deploy-rpi5 <user@host> [remote_dir]" >&2
+              echo "   or: RPI5_HOST=user@host deploy-rpi5" >&2
               exit 1
             fi
 
-            echo "🚀 Deploying $TARGET_FILE to $TARGET_HOST:$REMOTE_DIR/..."
+            TARGET_FILE=$(find ./bin -maxdepth 1 -type f -executable 2>/dev/null | head -n 1 || true)
+            if [ -z "$TARGET_FILE" ] && [ -d "./result/bin" ]; then
+              TARGET_FILE=$(find ./result/bin -maxdepth 1 -type f -executable | head -n 1 || true)
+            fi
+
+            if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
+              echo "No binary found. Run 'build-rpi5' or 'nix build' first." >&2
+              exit 1
+            fi
+
             ssh "$TARGET_HOST" "mkdir -p '$REMOTE_DIR'"
             rsync -avzL --chmod=u+rwx "$TARGET_FILE" "$TARGET_HOST:$REMOTE_DIR/"
-            echo "✅ Deployed! Run remotely with: ssh $TARGET_HOST '$REMOTE_DIR/$(basename "$TARGET_FILE")'"
-          '';
-        };
-
-        export-llm-context = pkgs.writeShellApplication {
-          name = "export-llm-context";
-          runtimeInputs =
-            with pkgs;
-            [
-              findutils
-              coreutils
-              tree
-            ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-              wl-clipboard
-              xclip
-            ];
-          text = ''
-            SEARCH_PATH="''${1:-.}"
-            OUTFILE="llm_context.md"
-            TMPFILE=$(mktemp)
-
-            echo "Generating context markdown for path: $SEARCH_PATH"
-
-            if [ ! -d "$SEARCH_PATH" ]; then
-              echo "Error: Directory '$SEARCH_PATH' does not exist." >&2
-              exit 1
-            fi
-
-            {
-              echo "# Project Context"
-              echo
-              echo "## File Tree"
-              echo "\`\`\`"
-              tree "$SEARCH_PATH" -a \
-                -I '.git|.direnv|bin|build|result|llm_context.md' \
-                --dirsfirst
-              echo "\`\`\`"
-              echo
-              echo "## Files"
-              echo
-            } > "$TMPFILE"
-
-            find "$SEARCH_PATH" -type f \( \
-              -name "*.c" -o \
-              -name "*.h" -o \
-              -name "*.cpp" -o \
-              -name "*.hpp" -o \
-              -name "*.nix" -o \
-              -name "Makefile" -o \
-              -name "*.json" -o \
-              -name "*.toml" -o \
-              -name "*.md" \
-            \) \
-              -not -path '*/.*' \
-              -not -path '*/build/*' \
-              -not -path '*/bin/*' \
-              -not -name "$OUTFILE" \
-              -print0 | sort -z | while IFS= read -r -d "" file; do
-
-              CLEAN_PATH="''${file#./}"
-              echo "Found: $CLEAN_PATH" >&2
-
-              BASE=$(basename "$CLEAN_PATH")
-              EXT="''${CLEAN_PATH##*.}"
-              LANG_TAG="text"
-              case "$BASE" in
-                Makefile|Makefile.*) LANG_TAG="makefile" ;;
-              esac
-              case "$EXT" in
-                c|h)            LANG_TAG="c" ;;
-                cpp|hpp)        LANG_TAG="cpp" ;;
-                nix)            LANG_TAG="nix" ;;
-                json|jsonc)     LANG_TAG="json" ;;
-                toml)           LANG_TAG="toml" ;;
-                md)             LANG_TAG="markdown" ;;
-              esac
-
-              {
-                printf "### \`%s\`\n\`\`\`%s\n" "$CLEAN_PATH" "$LANG_TAG"
-                cat "$file"
-                printf "\n\`\`\`\n\n"
-              } >> "$TMPFILE"
-            done
-
-            mv "$TMPFILE" "$OUTFILE"
-            echo "Successfully exported context to $OUTFILE"
-
-            if command -v wl-copy >/dev/null 2>&1; then
-              wl-copy < "$OUTFILE"
-              echo "Copied $OUTFILE to clipboard (via wl-copy)."
-            elif command -v pbcopy >/dev/null 2>&1; then
-              pbcopy < "$OUTFILE"
-              echo "Copied $OUTFILE to clipboard (via pbcopy)."
-            elif command -v xclip >/dev/null 2>&1; then
-              xclip -selection clipboard < "$OUTFILE"
-              echo "Copied $OUTFILE to clipboard (via xclip)."
-            fi
           '';
         };
       in
@@ -248,7 +147,6 @@
         };
 
         formatter = treefmtEval.config.build.wrapper;
-
         checks.formatting = treefmtEval.config.build.check self;
 
         devShells.default = pkgs.mkShell {
@@ -264,7 +162,6 @@
             cleanBuildHelper
             runHelper
             deployHelper
-            export-llm-context
           ]
           ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isAarch64) [
             pkgs.qemu-user
@@ -275,15 +172,6 @@
             export CXX="${crossPkgs.stdenv.cc.targetPrefix}c++"
             export AR="${crossPkgs.stdenv.cc.targetPrefix}ar"
             export STRIP="${crossPkgs.stdenv.cc.targetPrefix}strip"
-
-            mkdir -p .zed
-            cat << 'EOF' > .zed/tasks.json
-            [
-              { "label": "RPi 5: Build", "command": "build-rpi5", "use_new_terminal": false, "allow_concurrent_runs": false },
-              { "label": "RPi 5: Run (QEMU)", "command": "run-rpi5", "use_new_terminal": true, "allow_concurrent_runs": true },
-              { "label": "RPi 5: Deploy (SSH)", "command": "deploy-rpi5", "use_new_terminal": true, "allow_concurrent_runs": false }
-            ]
-            EOF
 
             if [ ! -f .clangd ]; then
               cat > .clangd << 'EOF'
@@ -303,12 +191,11 @@
               LSP         : clangd
 
             Commands:
-              build-rpi5         Build project and update compile_commands.json
-              rebuild-rpi5       Clean build from scratch
-              run-rpi5 [bin]     Run binary (via qemu-aarch64 on x86_64)
-              deploy-rpi5 [host] Push binary via rsync/ssh (default: $RPI5_HOST)
-              nix build          Build reproducible static aarch64 package
-              export-llm-context Export workspace files to llm_context.md
+              build-rpi5               Build project + compile_commands.json
+              rebuild-rpi5             Clean build from scratch
+              run-rpi5 [bin]           Run locally (via qemu-aarch64 on non-ARM64)
+              deploy-rpi5 <user@host>  Push binary via rsync/ssh (or $RPI5_HOST)
+              nix build                Build static aarch64 package
             ========================================================================
             EOF
           '';
