@@ -24,9 +24,9 @@ static const char *state_name(node_state_t state) {
 //---------------------------------------------------------------------------------
 	switch (state) {
 		case NODE_STARTING:  return "configuring network";
-		case NODE_LISTENING: return "listening         ";
-		case NODE_CONNECTED: return "client connected  ";
-		default:             return "FAILED            ";
+		case NODE_LISTENING: return "listening          ";
+		case NODE_CONNECTED: return "client connected   ";
+		default:             return "FAILED             ";
 	}
 }
 
