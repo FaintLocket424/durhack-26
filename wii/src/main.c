@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     VIDEO_WaitVSync();
 
   printf("\x1b[2;0H");
-  printf("Hello from Nintendo Wii!\n");
+  printf("Hello from Nintendo Wii! Hamster... I miss you...\n");
   printf("Press HOME to exit.\n");
 
   while (1) {

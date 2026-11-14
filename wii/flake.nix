@@ -159,14 +159,25 @@
           DEVKITPRO = devkitPro;
           DEVKITPPC = devkitPpc;
 
+          dontFixup = true;
+
           preBuild = ''
             export PATH="$DEVKITPRO/tools/bin:$DEVKITPPC/bin:$PATH"
           '';
 
           installPhase = ''
             runHook preInstall
+
+            dol=$(find . -maxdepth 1 -name '*.dol' | head -n 1)
+            if [ -z "$dol" ]; then
+              echo "No .dol produced by make" >&2
+              exit 1
+            fi
+
             mkdir -p $out
-            cp -f *.dol *.elf $out/ 2>/dev/null || true
+            cp "$dol" $out/boot.dol
+            cp -f *.elf $out/ 2>/dev/null || true
+
             runHook postInstall
           '';
         };
