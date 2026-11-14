@@ -1,0 +1,12 @@
+/bin/
+/app
+*.o
+*.a
+*.so
+
+/result
+
+llm_context.md
+compile_commands.json
+.cache/
+.clangd/
