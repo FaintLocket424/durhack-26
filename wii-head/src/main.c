@@ -4,6 +4,7 @@
 //   HOME quit
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -16,6 +17,7 @@
 
 #include "sched.h"
 #include "worker.h"
+#include "log.h"
 #include "config.h"
 
 static void *xfb = NULL;
@@ -49,43 +51,110 @@ static void wait_home(void) {
 	}
 }
 
+#define SCREEN_COLS	74					// 640px - 2*20px margin, 8px font
+#define SCREEN_ROWS	25
+#define STATUS_EVERY	12					// redraw the status every 12 frames (~5 Hz)
+
 //---------------------------------------------------------------------------------
 static const char *state_name(worker_state_t s) {
 //---------------------------------------------------------------------------------
 	switch (s) {
-		case W_CONNECTING: return "connecting";
-		case W_RENDERING:  return "rendering ";
-		case W_IDLE:       return "waiting   ";
-		case W_DONE:       return "done      ";
-		default:           return "DEAD      ";
+		case W_CONNECTING: return "connect";
+		case W_RENDERING:  return "render";
+		case W_IDLE:       return "idle";
+		case W_BACKOFF:    return "retry";
+		case W_DONE:       return "done";
+		default:           return "DEAD";
 	}
 }
 
+// One full-width console line; padding overwrites whatever was there last frame.
 //---------------------------------------------------------------------------------
-static void print_status(const char *my_ip, unsigned elapsed, int complete, int finished) {
+static void line(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void line(const char *fmt, ...) {
 //---------------------------------------------------------------------------------
-	uint32_t done, total;
-	sched_progress(&done, &total);
+	char buf[128];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+	printf("%-*.*s\n", SCREEN_COLS, SCREEN_COLS, buf);
+}
+
+//---------------------------------------------------------------------------------
+// Per node, two lines:
+//   ip  state  tiles done, requests queued on the node, last tile's node time
+//   (render + latency) and transfer time, reply throughput, render speed in
+//   thousands of samples/s, share of the finished work
+//   tile in progress, pixel format, connects (c) / failures (f), seconds since
+//   the node last sent a byte, last error (full text is in the event log)
+//---------------------------------------------------------------------------------
+static void print_status(const char *my_ip, unsigned elapsed_ms, int complete, int finished) {
+//---------------------------------------------------------------------------------
+	sched_stats_t st;
+	sched_stats(&st);
+	uint32_t now = worker_now_ms();
 
 	printf("\x1b[2;0H");
-	printf("Wii render coordinator (%s)\n\n", my_ip);
-	printf("image %dx%d, %d passes x %d spp, depth %d\n\n",
-	       IMG_W, IMG_H, PASSES, SPP_PER_REQ, MAX_DEPTH);
+	line("Wii render coordinator (%s)", my_ip);
+	line("image %dx%d, %d passes x %d spp, depth %d, %d nodes",
+	     IMG_W, IMG_H, PASSES, SPP_PER_REQ, MAX_DEPTH, NUM_WORKERS);
+	line("%s", "");
+	line("node            state   tiles q node ms xfer ms  KB/s  ksps share");
 
 	for (int i = 0; i < NUM_WORKERS; i++) {
 		const worker_t *w = &workers[i];
-		printf("%-15s %4ux%-4u %s %5u tiles", w->ip, (unsigned)w->tile_w, (unsigned)w->tile_h,
-		       state_name(w->state), (unsigned)w->tiles);
-		if (w->state == W_DEAD) printf("  err %d", w->last_error);
-		printf("            \n");
+		unsigned share = st.done ? (unsigned)((uint64_t)w->px_done * 100 / st.done) : 0;
+		unsigned ksps  = w->node_ms_total ?
+		                 (unsigned)((uint64_t)w->px_done * SPP_PER_REQ / w->node_ms_total) : 0;
+
+		line("%-15s %-7s %5u %u %7u %7u %5u %5u %4u%%", w->ip, state_name(w->state),
+		     (unsigned)w->tiles, (unsigned)w->in_flight, (unsigned)w->node_ms,
+		     (unsigned)w->xfer_ms, (unsigned)w->kbps, ksps, share);
+
+		char tile[24] = "-";
+		if (w->state == W_RENDERING)
+			snprintf(tile, sizeof tile, "@%u,%u %ux%u", (unsigned)w->cur_x, (unsigned)w->cur_y,
+			         (unsigned)w->cur_w, (unsigned)w->cur_h);
+		unsigned quiet = w->state == W_RENDERING && w->last_rx_ms ?
+		                 (unsigned)((now - w->last_rx_ms) / 1000) : 0;
+		if (w->state == W_CONNECTING && w->conn_start_ms)		// "connect 40s" = wrong IP / node not reachable
+			snprintf(tile, sizeof tile, "connect %us", (unsigned)((now - w->conn_start_ms) / 1000));
+
+		line("  %-14s %s c%u f%u quiet %2us %s", tile,
+		     w->tiles ? (w->f16 ? "f16" : "f32") : "---",
+		     (unsigned)w->connects, (unsigned)w->failures, quiet, w->err);
 	}
 
-	printf("\nprogress: %3u%%   elapsed: %us   \n", (unsigned)((uint64_t)done * 100 / total), elapsed);
+	line("%s", "");
+	unsigned permille = st.total ? (unsigned)((uint64_t)st.done * 1000 / st.total) : 0;
+	char lost[24] = "";
+	if (st.lost) snprintf(lost, sizeof lost, "  LOST %u", (unsigned)st.lost);
+	line("progress %3u.%u%%  pass %u/%u  in flight %u  requeued %u  waiting %u%s",
+	     permille / 10, permille % 10,
+	     (unsigned)(st.pass < st.passes ? st.pass + 1 : st.passes), (unsigned)st.passes,
+	     (unsigned)st.in_flight, (unsigned)st.requeued, (unsigned)st.queued, lost);
+
+	char eta[16] = "--";
+	if (st.done > 0 && st.done < st.total)
+		snprintf(eta, sizeof eta, "%us", (unsigned)((uint64_t)elapsed_ms * (st.total - st.done) / st.done / 1000));
+	unsigned cluster = elapsed_ms ? (unsigned)((uint64_t)st.done * SPP_PER_REQ / elapsed_ms) : 0;
+	line("elapsed %u.%us  ETA %s  cluster %u ksps", elapsed_ms / 1000, (elapsed_ms % 1000) / 100, eta, cluster);
+
+	// event log fills the rest of the screen
+	int show = SCREEN_ROWS - (10 + 2 * NUM_WORKERS) - 1;
+	if (show < 3) show = 3;
+	if (show > 12) show = 12;
+	char ev[12][LOG_COLS + 1];
+	int n = log_copy(ev, show);
+	line("%s", "");
+	line("events:");
+	for (int i = 0; i < show; i++) line("%s", i < n ? ev[i] : "");
+
 	if (finished)
-		printf("%s\n\n", complete ? "complete.                            "
-		                          : "INCOMPLETE: all nodes dropped out.  ");
+		line("%s", complete ? "complete." : "INCOMPLETE: all nodes dropped out.");
 	else
-		printf("\nHOME to quit                         \n");
+		line("HOME to quit");
 }
 
 //---------------------------------------------------------------------------------
@@ -164,6 +233,7 @@ int main(int argc, char **argv) {
 	LWP_MutexInit(&img.lock, false);
 
 	sched_init(IMG_W, IMG_H, PASSES);
+	log_init();
 
 	VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
 	u64 t0 = gettime();
@@ -173,17 +243,24 @@ int main(int argc, char **argv) {
 	}
 
 	// ---- render phase: status until every worker has finished or died
+	// The console draws every character in software, so redrawing the whole
+	// status screen each frame would take most of the CPU away from the worker
+	// threads. Redraw a few times a second, and keep the UI thread below them.
+	LWP_SetThreadPriority(LWP_GetSelf(), 40);
 	int finished = 0;
-	unsigned elapsed = 0;
+	unsigned elapsed = 0;					// ms
+	unsigned frame = 0;
 	while (SYS_MainLoop() && !finished) {
 		finished = 1;
 		for (int i = 0; i < NUM_WORKERS; i++)
 			if (workers[i].state != W_DONE && workers[i].state != W_DEAD) finished = 0;
 
-		elapsed = (unsigned)ticks_to_secs(gettime() - t0);
-		uint32_t done, total;
-		sched_progress(&done, &total);
-		print_status(my_ip, elapsed, done >= total, finished);
+		elapsed = (unsigned)ticks_to_millisecs(gettime() - t0);
+		if (finished || frame++ % STATUS_EVERY == 0) {
+			uint32_t done, total;
+			sched_progress(&done, &total);
+			print_status(my_ip, elapsed, done >= total, finished);
+		}
 
 		VIDEO_WaitVSync();
 		WPAD_ScanPads();

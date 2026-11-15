@@ -4,7 +4,7 @@
 
 #include "sched.h"
 
-#define MAX_RETRY 16					// >= number of nodes (one tile in flight each)
+#define MAX_RETRY 64					// >= total tiles that can be in flight (nodes x pipeline depth)
 
 static mutex_t  lock;
 static uint8_t *cov;					// 1 = pixel already handed out in the current pass
@@ -13,6 +13,7 @@ static uint32_t pass, scan;				// current pass, first possibly-uncovered pixel
 static uint32_t jid, in_flight, px_done;
 static tile_t   retry[MAX_RETRY];
 static int      nretry;
+static uint32_t requeued, lost;
 
 //---------------------------------------------------------------------------------
 void sched_init(uint32_t img_w, uint32_t img_h, uint32_t n_passes) {
@@ -81,7 +82,9 @@ void sched_requeue(const tile_t *t) {
 //---------------------------------------------------------------------------------
 	LWP_MutexLock(lock);
 	in_flight--;
+	requeued++;
 	if (nretry < MAX_RETRY) retry[nretry++] = *t;
+	else lost++;
 	LWP_MutexUnlock(lock);
 }
 
@@ -92,4 +95,28 @@ void sched_progress(uint32_t *done, uint32_t *total) {
 	*done  = px_done;
 	*total = W * H * passes;
 	LWP_MutexUnlock(lock);
+}
+
+//---------------------------------------------------------------------------------
+void sched_stats(sched_stats_t *st) {
+//---------------------------------------------------------------------------------
+	LWP_MutexLock(lock);
+	st->pass      = pass;
+	st->passes    = passes;
+	st->in_flight = in_flight;
+	st->queued    = (uint32_t)nretry;
+	st->requeued  = requeued;
+	st->lost      = lost;
+	st->done      = px_done;
+	st->total     = W * H * passes;
+	LWP_MutexUnlock(lock);
+}
+
+//---------------------------------------------------------------------------------
+int sched_finished(void) {
+//---------------------------------------------------------------------------------
+	LWP_MutexLock(lock);
+	int r = px_done >= W * H * passes && in_flight == 0 && nretry == 0;
+	LWP_MutexUnlock(lock);
+	return r;
 }

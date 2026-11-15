@@ -29,4 +29,16 @@ void sched_requeue(const tile_t *t);		// node failed, give the tile to someone e
 
 void sched_progress(uint32_t *done, uint32_t *total);	// in pixel-requests
 
+typedef struct {
+	uint32_t pass, passes;				// current sweep (0-based), total sweeps
+	uint32_t in_flight;					// tiles handed out and not yet back
+	uint32_t queued;					// failed tiles waiting for another node
+	uint32_t requeued;					// tiles that ever had to be redone
+	uint32_t lost;						// tiles dropped because the queue was full (should be 0)
+	uint32_t done, total;				// pixel-requests
+} sched_stats_t;
+
+void sched_stats(sched_stats_t *s);
+int  sched_finished(void);				// 1 when nothing is left and nothing is in flight
+
 #endif
