@@ -15,6 +15,9 @@
 #define SAMPLES   2     // SAMPLES x SAMPLES rays per render pixel (1 = off)
 #define AMBIENT   0.15f
 
+#define SPP_PER_JOB 1        // samples per tile per job
+#define MAX_PASSES  0        // 0 = keep refining forever
+
 // ---------------------------------------------------------------- vec3
 typedef struct { float x, y, z; } vec3;
 
@@ -25,6 +28,7 @@ static inline vec3  mul(vec3 a, float s)   { return v3(a.x*s, a.y*s, a.z*s); }
 static inline float dot(vec3 a, vec3 b)    { return a.x*b.x + a.y*b.y + a.z*b.z; }
 static inline vec3  norm(vec3 a)           { return mul(a, 1.0f / sqrtf(dot(a, a))); }
 static inline vec3  cross(vec3 a, vec3 b)  { return v3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x); }
+static inline vec3 vmul(vec3 a, vec3 b) { return v3(a.x*b.x, a.y*b.y, a.z*b.z); }
 
 static inline vec3 reflect_dir(vec3 d, vec3 n) { return sub(d, mul(n, 2.0f * dot(d, n))); }
 
@@ -89,6 +93,22 @@ static void init_scene(void) {
         pl->u = norm(sub(pl->u, mul(pl->n, dot(pl->u, pl->n))));   // u perp to n
         pl->v = cross(pl->n, pl->u);
     }
+}
+
+static u32 rng_state = 1;
+static inline u32 rng_u32(void) {            // xorshift32
+    u32 x = rng_state;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    return rng_state = x;
+}
+static inline float rnd(void) { return (rng_u32() >> 8) * (1.0f / 16777216.0f); }
+
+static vec3 cos_hemisphere(vec3 n) {
+    float r1 = 6.2831853f * rnd(), r2 = rnd(), s = sqrtf(r2);
+    vec3 a = fabsf(n.x) > 0.9f ? v3(0,1,0) : v3(1,0,0);
+    vec3 t = norm(cross(a, n)), b = cross(n, t);
+    return norm(add(add(mul(t, cosf(r1)*s), mul(b, sinf(r1)*s)),
+                    mul(n, sqrtf(1.0f - r2))));
 }
 
 
@@ -177,75 +197,63 @@ static vec3 sky(vec3 d) {
 }
 
 // ---------------------------------------------------------------- recursive trace
-static vec3 trace(vec3 o, vec3 d, int depth) {
-    //if (depth <= 0) return sky(d); // (zero value is "sky")
-    if (depth <= 0) return v3(0.f, 0.f, 0.f);
+#define SUN 2.0f   // sun radiance (absorbs the 1/pi)
 
-    hit h;
-    if (!scene_hit(o, d, &h)) return sky(d);
+static vec3 trace(vec3 o, vec3 d, int maxdepth) {
+    vec3 L = {0,0,0}, T = {1,1,1};
 
-    vec3 N = h.n;
-    int entering = dot(N, d) < 0.0f;
-    if (!entering) N = mul(N, -1.0f);     // make N face the incoming ray
+    for (int bounce = 0; bounce < maxdepth; bounce++) {
+        hit h;
+        if (!scene_hit(o, d, &h)) { L = add(L, vmul(T, sky(d))); break; }
 
-    // ---- local lighting: ambient + diffuse + Blinn-Phong highlight
-    float diff = dot(N, light_dir);
-    float spec = 0.0f;
-    if (diff < 0.0f) diff = 0.0f;
-    if (diff > 0.0f) {
-        diff *= shadow_factor(add(h.p, mul(N, EPS)), light_dir);
-        if (diff > 0.0f) {
-            float s = dot(N, norm(sub(light_dir, d)));
-            if (s > 0.0f) {               // s^32 by repeated squaring (pow is slow)
-                s *= s; s *= s; s *= s; s *= s; s *= s;
-                spec = 0.6f * s * diff;
+        vec3 N = h.n;
+        int entering = dot(N, d) < 0.0f;
+        if (!entering) N = mul(N, -1.0f);
+        material m = h.m;
+
+        // Russian roulette: cheap unbiased early termination
+        if (bounce > 3) {
+            float p = fmaxf(T.x, fmaxf(T.y, T.z));
+            if (p < 0.05f) p = 0.05f; if (p > 0.95f) p = 0.95f;
+            if (rnd() > p) break;
+            T = mul(T, 1.0f / p);
+        }
+
+        if (rnd() < m.transp) {                       // ---- glass
+            float n1 = entering ? 1.0f : m.ior, n2 = entering ? m.ior : 1.0f;
+            float cosi = -dot(N, d);
+            vec3 tdir;
+            int can = refract_dir(d, N, n1 / n2, &tdir);
+            float R = 1.0f;
+            if (can) {
+                float r0 = (n1-n2)/(n1+n2); r0 *= r0;
+                float c = (n1 <= n2) ? cosi : -dot(N, tdir);
+                float k = 1.0f - c;
+                R = r0 + (1.0f - r0) * k*k*k*k*k;
             }
+            if (rnd() < R) { d = reflect_dir(d, N); o = add(h.p, mul(N,  EPS)); }
+            else           { d = tdir;              o = sub(h.p, mul(N,  EPS)); }
+            T = vmul(T, m.col);
+        }
+        else if (rnd() < m.refl) {                    // ---- mirror
+            d = reflect_dir(d, N);
+            o = add(h.p, mul(N, EPS));
+        }
+        else {                                        // ---- diffuse
+            T = vmul(T, m.col);
+            // next-event estimation: soft sun shadow via jittered light dir
+            vec3 jit = v3(rnd()-0.5f, rnd()-0.5f, rnd()-0.5f);
+            vec3 sd  = norm(add(light_dir, mul(jit, 0.15f)));
+            float nl = dot(N, sd);
+            if (nl > 0.0f) {
+                float vis = shadow_factor(add(h.p, mul(N, EPS)), sd);
+                L = add(L, mul(T, SUN * nl * vis));
+            }
+            d = cos_hemisphere(N);
+            o = add(h.p, mul(N, EPS));
         }
     }
-    vec3 local = add(mul(h.m.col, AMBIENT + (1.0f - AMBIENT) * diff), v3(spec, spec, spec));
-
-    if (h.m.refl <= 0.0f && h.m.transp <= 0.0f) return local;
-
-    vec3 rdir = reflect_dir(d, N);
-    vec3 mirror_o = add(h.p, mul(N, EPS));
-
-    // ---- opaque, partly mirrored
-    if (h.m.transp <= 0.0f) {
-        vec3 rc = trace(mirror_o, rdir, depth - 1);
-        return add(mul(local, 1.0f - h.m.refl), mul(rc, h.m.refl));
-    }
-
-    // ---- transparent: Fresnel split between reflection and refraction
-    float n1 = entering ? 1.0f : h.m.ior;
-    float n2 = entering ? h.m.ior : 1.0f;
-    float eta = n1 / n2;
-    float cosi = -dot(N, d);
-
-    vec3 tdir;
-    int can_refract = refract_dir(d, N, eta, &tdir);
-
-    float R;
-    if (!can_refract) {
-        R = 1.0f;                         // total internal reflection
-    } else {
-        float r0 = (n1 - n2) / (n1 + n2); r0 *= r0;
-        float c = (n1 <= n2) ? cosi : -dot(N, tdir);   // Schlick uses the larger-angle side
-        float m = 1.0f - c;
-        float m2 = m * m;
-        R = r0 + (1.0f - r0) * m2 * m2 * m;
-    }
-    float T = 1.0f - R;
-
-    vec3 fres = mul(trace(mirror_o, rdir, depth - 1), R);
-    if (can_refract) {
-        vec3 refr_o = sub(h.p, mul(N, EPS));          // start on the other side
-        fres = add(fres, mul(trace(refr_o, tdir, depth - 1), T));
-    }
-
-    float k = h.m.transp;
-    // tint what passes through by the material colour so glass isn't perfectly clear
-    fres = v3(fres.x * h.m.col.x, fres.y * h.m.col.y, fres.z * h.m.col.z);
-    return add(mul(local, 1.0f - k), mul(fres, k));
+    return L;
 }
 
 // ---------------------------------------------------------------- pixel packing
@@ -263,6 +271,34 @@ static inline u32 pack_yuv(vec3 c) {
 
 // ---------------------------------------------------------------- rendering
 static u32 renderbuf[RW * RH];
+
+static float accum[RW * RH * 3];
+
+static void render_tile_pass(int x0, int y0, u32 seed, int spp) {
+    const float px = 2.0f * 0.57735f / RH;
+    const vec3 origin = {0,0,0};
+    for (int y = y0; y < y0 + TILE; y++)
+    for (int x = x0; x < x0 + TILE; x++) {
+        rng_state = (seed ^ (x * 73856093u) ^ (y * 19349663u)) | 1u;
+        for (int i = 0; i < 4; i++) rng_u32();           // warm up
+        vec3 sum = {0,0,0};
+        for (int s = 0; s < spp; s++) {
+            float fx = x + rnd(), fy = y + rnd();        // random subpixel jitter
+            vec3 d = norm(v3((fx - RW*0.5f)*px, (RH*0.5f - fy)*px, -1.0f));
+            sum = add(sum, trace(origin, d, MAX_DEPTH));
+        }
+        float *a = &accum[(y*RW + x) * 3];
+        a[0] += sum.x; a[1] += sum.y; a[2] += sum.z;
+    }
+}
+
+static void resolve(int total_spp) {
+    float inv = 1.0f / total_spp;
+    for (int i = 0; i < RW*RH; i++)
+        renderbuf[i] = pack_yuv(v3(sqrtf(accum[i*3]*inv),
+                                   sqrtf(accum[i*3+1]*inv),
+                                   sqrtf(accum[i*3+2]*inv)));
+}
 
 static void render_tile(int x0, int y0) {
     const float px = 2.0f * 0.57735f / RH;    // tan(30deg): 60deg vertical FOV
@@ -299,7 +335,13 @@ static void present(u32 *xfb, int W, int H) {
     DCFlushRange(xfb, (u32)W * H * 2);         // push cache to RAM before scanout
 }
 
-// ---------------------------------------------------------------- main
+static inline u32 hash_u32(u32 x) {          // decent integer mixer (murmur3 finalizer)
+    x ^= x >> 16; x *= 0x85ebca6bu;
+    x ^= x >> 13; x *= 0xc2b2ae35u;
+    x ^= x >> 16;
+    return x;
+}
+
 int main(void) {
     VIDEO_Init();
     WPAD_Init();
@@ -316,29 +358,48 @@ int main(void) {
     init_scene();
     const int W = rmode->fbWidth;
     const int H = rmode->xfbHeight;
-
     light_dir = norm(v3(-0.6f, 1.0f, 0.4f));
 
+    // start from a cleared accumulator and a black screen
+    for (int i = 0; i < RW * RH * 3; i++) accum[i] = 0.0f;
     u32 black = pack_yuv(v3(0, 0, 0));
     for (int i = 0; i < RW * RH; i++) renderbuf[i] = black;
     present(xfb, W, H);
 
-    for (int ty = 0; ty < RH; ty += TILE) {
-        for (int tx = 0; tx < RW; tx += TILE)
-        {
-            render_tile(tx, ty);
+    const int tiles_x = RW / TILE;
+    const int tiles_y = RH / TILE;
+    const int ntiles  = tiles_x * tiles_y;
 
-            present(xfb, W, H);
-            VIDEO_WaitVSync(); // visible tiling
+    int total_spp = 0;
+    int pass = 0;
+
+    for (;;) {
+        // one pass = SPP_PER_JOB more samples for every tile
+        for (int t = 0; t < ntiles; t++) {
+            int tx = (t % tiles_x) * TILE;
+            int ty = (t / tiles_x) * TILE;
+
+            // job id -> seed. This is exactly what a coordinator would send to a worker.
+            u32 job_id = (u32)pass * (u32)ntiles + (u32)t;
+            u32 seed   = hash_u32(job_id + 1);
+
+            render_tile_pass(tx, ty, seed, SPP_PER_JOB);
+
+            WPAD_ScanPads();
+            if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) exit(0);
         }
-            
 
-        
-        WPAD_ScanPads();
-        if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) exit(0);
+        total_spp += SPP_PER_JOB;
+        pass++;
+
+        resolve(total_spp);          // accum / total_spp -> gamma -> YUV
+        present(xfb, W, H);
+        VIDEO_WaitVSync();
+
+        if (MAX_PASSES > 0 && pass >= MAX_PASSES) break;
     }
 
-    // and now we wait to end
+    // finished: hold the final image until HOME is pressed
     while (SYS_MainLoop()) {
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) exit(0);
