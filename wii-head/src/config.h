@@ -8,7 +8,7 @@
 
 #define IMG_W			320
 #define IMG_H			240
-#define SPP_PER_REQ		16			// samples per pixel per request
+#define SPP_PER_REQ		4			// samples per pixel per request
 //#define PASSES			4			// total spp = SPP_PER_REQ * PASSES
 #define MAX_DEPTH		6			// bounce limit
 
