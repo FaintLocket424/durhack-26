@@ -13,6 +13,7 @@
 #define WORKER_PORT		5555
 #define PING_TIMEOUT_MS	2000
 
+// they are currently dynamic.... need to be static
 static const char *worker_ips[] = {
 	"192.168.1.50",
 	"192.168.1.51",
