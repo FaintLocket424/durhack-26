@@ -16,6 +16,11 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#if defined(__has_include)
+#if __has_include(<netinet/tcp.h>)
+#include <netinet/tcp.h>
+#endif
+#endif
 
 #ifdef GEKKO
 #include <ogcsys.h>
@@ -85,7 +90,7 @@ static int recv_all(const node_t *node, int sock, void *buf, size_t len) {
 
 	while (len > 0) {
 		if (wait_readable(sock, node) <= 0) return -1;
-		ssize_t n = recv(sock, p, len, 0);
+		ssize_t n = recv(sock, p, len > NET_CHUNK ? NET_CHUNK : len, 0);
 		if (n < 0 && errno == EINTR) continue;
 		if (n <= 0) return -1;				// 0: peer closed, <0: error
 		p += n;
@@ -100,7 +105,7 @@ static int send_all(int sock, const void *buf, size_t len) {
 	const uint8_t *p = buf;
 
 	while (len > 0) {
-		ssize_t n = send(sock, p, len, 0);
+		ssize_t n = send(sock, p, len > NET_CHUNK ? NET_CHUNK : len, 0);
 		if (n < 0 && errno == EINTR) continue;
 		if (n <= 0) return -1;
 		p += n;
@@ -113,9 +118,9 @@ static int send_all(int sock, const void *buf, size_t len) {
 // Header and payload go out in a single send(). Two small back-to-back writes
 // trigger Nagle + delayed ACK and add roughly 40 ms to every reply.
 //---------------------------------------------------------------------------------
-static int send_frame(int sock, uint16_t type, uint32_t request_id, const uint8_t *payload, uint32_t len) {
+static int send_frame(int sock, uint16_t type, uint16_t flags, uint32_t request_id, const uint8_t *payload, uint32_t len) {
 //---------------------------------------------------------------------------------
-	frame_header_t h = { .type = type, .flags = 0, .request_id = request_id, .payload_len = len };
+	frame_header_t h = { .type = type, .flags = flags, .request_id = request_id, .payload_len = len };
 
 	uint8_t *frame = malloc(PROTO_HEADER_SIZE + len);
 	if (frame == NULL) {
@@ -139,7 +144,7 @@ static int send_error(int sock, uint32_t request_id, int status) {
 //---------------------------------------------------------------------------------
 	uint8_t code[4];
 	put_u32(code, (uint32_t)-status);
-	return send_frame(sock, MSG_ERROR, request_id, code, sizeof code);
+	return send_frame(sock, MSG_ERROR, 0, request_id, code, sizeof code);
 }
 
 //---------------------------------------------------------------------------------
@@ -175,12 +180,12 @@ static int handle_request(int sock, node_t *node) {
 	}
 
 	response_t resp;
-	status = dispatch_request(h.type, payload, h.payload_len, &resp);
+	status = dispatch_request(h.type, h.flags, payload, h.payload_len, &resp);
 	free(payload);
 
 	int ret;
 	if (status == PROTO_OK) {
-		ret = send_frame(sock, resp.type, h.request_id, resp.data, resp.len);
+		ret = send_frame(sock, resp.type, resp.flags, h.request_id, resp.data, resp.len);
 	} else {
 		// A bad request is not fatal, the connection stays usable.
 		note_error(node, status);
@@ -330,6 +335,13 @@ static void *node_main(node_t *node) {
 
 		node->state = NODE_CONNECTED;
 		node->connections++;
+
+#ifdef TCP_NODELAY
+		// Replies go out as several NET_CHUNK sends; don't let Nagle hold the
+		// last partial segment back waiting for an ACK.
+		int nodelay = 1;
+		setsockopt(csock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
+#endif
 
 		while (keep_running(node) && handle_request(csock, node) == 0) {
 			// one request per iteration

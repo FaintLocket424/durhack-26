@@ -55,6 +55,7 @@ typedef struct {
 // What a handler produces. data is malloc()ed by the handler, freed by the caller.
 typedef struct {
 	uint16_t type;
+	uint16_t flags;							// copied into the reply header
 	uint8_t *data;							// NULL when len == 0
 	uint32_t len;
 } response_t;
@@ -126,9 +127,23 @@ static inline proto_status_t proto_decode_header(const uint8_t in[PROTO_HEADER_S
 // big-endian IEEE754 floats (R,G,B, row-major): the SUM of the spp samples per
 // pixel, linear light, NOT divided and NOT gamma corrected. The coordinator
 // adds sums from different requests and divides by the total sample count.
+//
+// Half-float replies (optional, backwards compatible):
+//   If the MSG_RENDER_TILE header has FLAG_F16_RESULT set, a node that knows
+//   the flag sets it on the MSG_TILE_RESULT header too and sends the pixels as
+//   w*h*3 big-endian IEEE754 half floats (2 bytes each). That halves the reply
+//   size. A node that doesn't know the flag ignores it and replies with flags 0
+//   and f32 pixels, so the coordinator must check the flag in the reply.
 //---------------------------------------------------------------------------------
 #define TILE_REQUEST_SIZE		36
 #define TILE_RESPONSE_PREFIX	20
+
+#define FLAG_F16_RESULT			0x0001
+
+// Never send more than this in one send()/recv() call. On the Wii every socket
+// call copies its buffer through a small shared IOS network heap, and very large
+// calls can fail with ENOMEM, especially when several sockets are busy at once.
+#define NET_CHUNK				8192
 
 static inline void put_f32(uint8_t *p, float v) {
 	uint32_t u;
@@ -140,6 +155,63 @@ static inline float get_f32(const uint8_t *p) {
 	uint32_t u = get_u32(p);
 	float v;
 	memcpy(&v, &u, sizeof v);
+	return v;
+}
+
+//---------------------------------------------------------------------------------
+// float -> IEEE754 half, round to nearest even. NaN becomes 0 and anything too big
+// becomes the largest finite half, so one bad sample can't poison a pixel
+// forever on the coordinator.
+//---------------------------------------------------------------------------------
+static inline uint16_t f32_to_f16(float f) {
+	uint32_t x;
+	memcpy(&x, &f, sizeof x);
+	uint32_t sign = (x >> 16) & 0x8000u;
+	uint32_t ex   = (x >> 23) & 0xFFu;
+	uint32_t man  = x & 0x7FFFFFu;
+
+	if (ex == 0xFF) return man ? 0 : (uint16_t)(sign | 0x7BFFu);	// NaN / inf
+	int e = (int)ex - 127 + 15;
+	if (e >= 31) return (uint16_t)(sign | 0x7BFFu);					// too big
+	if (e <= 0) {													// half subnormal / zero
+		if (e < -10) return (uint16_t)sign;
+		man |= 0x800000u;
+		uint32_t shift = (uint32_t)(14 - e);
+		uint32_t h    = man >> shift;
+		uint32_t rest = man & ((1u << shift) - 1u);			// bits shifted out
+		uint32_t half = 1u << (shift - 1);
+		if (rest > half || (rest == half && (h & 1u))) h++;	// round half to even
+		return (uint16_t)(sign | h);
+	}
+	uint32_t h    = sign | ((uint32_t)e << 10) | (man >> 13);
+	uint32_t rest = man & 0x1FFFu;
+	if (rest > 0x1000u || (rest == 0x1000u && (h & 1u))) h++;	// half to even; may carry into the exponent
+	if ((h & 0x7FFFu) >= 0x7C00u) h = sign | 0x7BFFu;
+	return (uint16_t)h;
+}
+
+//---------------------------------------------------------------------------------
+static inline float f16_to_f32(uint16_t h) {
+//---------------------------------------------------------------------------------
+	uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
+	uint32_t ex   = (h >> 10) & 0x1Fu;
+	uint32_t man  = h & 0x3FFu;
+	uint32_t bits;
+
+	if (ex == 0) {
+		if (man == 0) {
+			bits = sign;
+		} else {									// subnormal: man * 2^-24
+			float v = (float)man * (1.0f / 16777216.0f);
+			return sign ? -v : v;
+		}
+	} else if (ex == 31) {
+		return 0.0f;								// never sent by f32_to_f16
+	} else {
+		bits = sign | ((ex + 112u) << 23) | (man << 13);
+	}
+	float v;
+	memcpy(&v, &bits, sizeof v);
 	return v;
 }
 
