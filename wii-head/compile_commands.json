@@ -26,5 +26,61 @@
     ],
     "directory": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
     "output": "main.o"
+  },
+  {
+    "file": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/worker.c",
+    "arguments": [
+      "/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/devkitPPC/bin/powerpc-eabi-gcc",
+      "-MMD",
+      "-MP",
+      "-MF",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build/worker.d",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-DGEKKO",
+      "-mrvl",
+      "-mcpu=750",
+      "-meabi",
+      "-mhard-float",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/wii/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/ppc/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/libogc/include",
+      "-I/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+      "-c",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/worker.c",
+      "-o",
+      "worker.o"
+    ],
+    "directory": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+    "output": "worker.o"
+  },
+  {
+    "file": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/sched.c",
+    "arguments": [
+      "/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/devkitPPC/bin/powerpc-eabi-gcc",
+      "-MMD",
+      "-MP",
+      "-MF",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build/sched.d",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-DGEKKO",
+      "-mrvl",
+      "-mcpu=750",
+      "-meabi",
+      "-mhard-float",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/wii/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/ppc/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/libogc/include",
+      "-I/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+      "-c",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/sched.c",
+      "-o",
+      "sched.o"
+    ],
+    "directory": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+    "output": "sched.o"
   }
 ]

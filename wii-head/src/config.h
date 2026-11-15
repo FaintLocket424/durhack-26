@@ -17,8 +17,8 @@
 // fast nodes cut per-request network overhead.
 static worker_t workers[] = {
 	{ .ip = "10.215.147.254", .port = 5555, .tile_w = 64, .tile_h = 64 },
-	{ .ip = "10.215.147.175", .port = 5555, .tile_w = 16, .tile_h = 16 },
-	{ .ip = "10.215.147.67", .port = 5555, .tile_w = 16, .tile_h = 16 },
+	//{ .ip = "10.215.147.67", .port = 5555, .tile_w = 16, .tile_h = 16 },
+	//{ .ip = "10.215.147.175", .port = 5555, .tile_w = 16, .tile_h = 16 },
 };
 #define NUM_WORKERS ((int)(sizeof workers / sizeof workers[0]))
 
