@@ -1,9 +1,0 @@
-CompileFlags:
-  Add:
-    - "--target=powerpc-eabi"
-    - "-DGEKKO"
-    - "-DHW_RVL"
-  Remove:
-    - "-mrvl"
-    - "-meabi"
-    - "-mhard-float"
