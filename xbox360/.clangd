@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - "--target=powerpc64-unknown-unknown"
+    - "-DXENON"
+  Remove:
+    - "-mpowerpc64"
+    - "-mhard-float"
+    - "-mcpu=cell"
+    - "-mtune=cell"

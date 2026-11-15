@@ -1,0 +1,86 @@
+FreeMyXe 1.2.1
+https://github.com/FreeMyXe/FreeMyXe
+by Emma / InvoxiPlayGames, et al.
+
+for use with Xbox360BadUpdate by Grimdoomer
+https://github.com/grimdoomer/Xbox360BadUpdate
+
+bundled with XeLL Reloaded b1bb00b (07/Oct/2026) by the Free60 Project
+https://github.com/Free60Project/xell-reloaded
+and BadStorage v1 by Eaton Works
+https://github.com/EatonZ/BadStorage
+
+SHA256(FreeMyXe-1.2.1.xex):
+27dba1196f6d986d0de8a8e38325ca590c297be97a55d1288f66e96963ab7ec4
+
+Extract all these files into the "BadUpdatePayload" folder and rename
+"FreeMyXe.xex" to "default.xex"
+
+Features:
+* Displays CPU key front-and-center. Write that down!
+* Allows launching XeLL if you have xell.bin, xell-1f.bin, xell-2f.bin or 
+  xell-gggggg.bin in the BadUpdatePayload folder.
+* Allows unsigned content (homebrew, like XeXMenu) to be launched and loaded
+  from the dashboard.
+* Allows automatically launching homebrew after patching if named
+  after_patch.xex in the BadUpdatePayload folder, or if named default.xex
+  in a folder named Dashboard inside the BadUpdatePayload folder.
+* Disables connecting to Xbox Live. You MUST still disconnect before you
+  start running the exploit!
+* An option to automatically patch without a prompt, or automatically boot into
+  XeLL.
+  See https://github.com/FreeMyXe/FreeMyXe/wiki/Automatic-Patching
+  * A different autoboot option can be chosen when booting the console with the
+    eject button.
+* Support for internal storage over 500GB thanks to Bad Storage by Eaton Works.
+  https://fatxplorer.eaton-works.com/bad-storage/
+
+Patches:
+* Lets homebrew access the hypervisor and CPU key as they would be able to on
+  a modded console. (useful for Simple 360 NAND Flasher, etc)
+* Allows devkit-signed and encrypted XEX files to launch without needing to be
+  patched first.
+* Fixes the ring of light / controller syncing bug after using BadUpdate.
+* Patches the <30ms ping check for System Link.
+* Patches USB controller authentication check (a-la "UsbdSecPatch") to let
+  certain compatible controllers and adapters work. That's for you, Mario.
+
+Original Xbox support:
+As of FreeMyXe 1.2, Original Xbox games will just launch and run fine. There is
+no need to run "OGXboxPrep.xex" and it is no longer included in FreeMyXe.
+
+Credits to ikari's original freeBOOT, to cOz et al. for xeBuild 17559 patches
+and Dashlaunch, and to the RGLoader project.
+Greetz to Grimdoomer for the updated memory protection patches.
+
+FreeMyXe © Copyright FreeMyXe Team, 2025 - 2026
+
+Redistribution of FreeMyXe release binaries (as found on GitHub Releases) is
+permitted, so long as you are redistributing it for free (free as in gratis) -
+it must never require payment.
+
+---
+
+FreeMyXe contains BadStorage by Eaton Works. License:
+
+MIT License
+
+Bad Storage Copyright © Eaton Works 2025 ~ https://github.com/EatonZ/BadStorage
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
