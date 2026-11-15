@@ -8,8 +8,8 @@
 
 #define IMG_W			320
 #define IMG_H			240
-#define SPP_PER_REQ		4			// samples per pixel per request
-#define PASSES			16			// total spp = SPP_PER_REQ * PASSES
+#define SPP_PER_REQ		16			// samples per pixel per request
+#define PASSES			4			// total spp = SPP_PER_REQ * PASSES
 #define MAX_DEPTH		6			// bounce limit
 
 // One entry per node (Wii or 3DS). Tile size is per node (w*h <= 16384): small
