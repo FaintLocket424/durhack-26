@@ -2,3 +2,4 @@ llm_context.md
 .direnv
 .envrc
 result/*
+*.ppm
