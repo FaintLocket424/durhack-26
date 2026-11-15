@@ -11,7 +11,7 @@
 #define EPS       1e-3f
 #define PLANE_Y   (-1.0f)
 
-#define MAX_DEPTH 4     // recursion limit. Glass branches in two, so cost grows fast
+#define MAX_DEPTH 6     // recursion limit
 #define SAMPLES   2     // SAMPLES x SAMPLES rays per render pixel (1 = off)
 #define AMBIENT   0.15f
 
@@ -24,6 +24,7 @@ static inline vec3  sub(vec3 a, vec3 b)    { return v3(a.x-b.x, a.y-b.y, a.z-b.z
 static inline vec3  mul(vec3 a, float s)   { return v3(a.x*s, a.y*s, a.z*s); }
 static inline float dot(vec3 a, vec3 b)    { return a.x*b.x + a.y*b.y + a.z*b.z; }
 static inline vec3  norm(vec3 a)           { return mul(a, 1.0f / sqrtf(dot(a, a))); }
+static inline vec3  cross(vec3 a, vec3 b)  { return v3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x); }
 
 static inline vec3 reflect_dir(vec3 d, vec3 n) { return sub(d, mul(n, 2.0f * dot(d, n))); }
 
@@ -48,17 +49,50 @@ typedef struct { vec3 c; float r; material m; } sphere;
 
 static const sphere spheres[] = {
     // glass ball
-    {{ 0.0f,  0.0f, -5.0f}, 1.0f, {{0.90f, 0.95f, 1.00f}, 0.0f, 0.90f, 1.5f}},
+    {{ 0.0f,  0.0f, -5.0f}, 1.0f, {{0.90f, 0.95f, 1.00f}, 0.0f, 0.90f, 1.52f}},
     // mirror ball
-    {{ 2.2f, -0.4f, -6.0f}, 0.6f, {{0.20f, 0.80f, 0.30f}, 0.6f, 0.0f, 1.0f}},
+    {{ 2.2f, -0.4f, -6.0f}, 0.6f, {{0.20f, 0.80f, 0.30f}, 0.9f, 0.0f, 1.0f}},
     // glossy blue ball
-    {{-2.0f, -0.3f, -4.5f}, 0.7f, {{0.25f, 0.35f, 0.90f}, 0.25f, 0.0f, 1.0f}},
+    {{-2.0f, -0.3f, -4.5f}, 0.7f, {{0.25f, 0.35f, 0.90f}, 0.25f, 0.35f, 1.5f}},
     // red ball behind the glass (so you can see refraction)
-    {{ 0.3f, -0.4f, -8.5f}, 0.6f, {{0.90f, 0.20f, 0.20f}, 0.1f, 0.0f, 1.0f}},
+    {{ 0.3f, 0.0f, -8.5f}, 1.f, {{0.90f, 0.50f, 0.20f}, 0.5f, 0.0f, 1.0f}},
 };
 #define NSPHERES ((int)(sizeof(spheres)/sizeof(spheres[0])))
 
-static vec3 light_dir;   // direction TO the light, normalised
+// A plane through point p with normal n. If hu > 0 it is a finite rectangle:
+// u is the in-plane "width" axis, v = cross(n,u) the "height" axis,
+// and hu/hv are the half-extents along them. hu <= 0 means infinite.
+// If tile > 0 the surface alternates m.col / col2 in squares of that size.
+typedef struct {
+    vec3  p, n, u, v;
+    float hu, hv;
+    float tile;
+    vec3  col2;
+    material m;
+} plane;
+ 
+static plane planes[] = {
+    // floor (infinite)
+    { {0,-1,0}, {0,1,0}, {1,0,0}, {0,0,0}, 0.0f, 0.0f,
+      1.0f, {0.125f,0.125f,0.125f}, {{0.85f,0.85f,0.85f}, 0.25f, 0.0f, 1.0f} },
+ 
+    // diagonal wall: 10 wide, 4 tall, turned 45 degrees, front faces the camera side
+    { {3.5f, 1.0f, -9.0f}, {-1,0,1}, {1,0,1}, {0,0,0}, 5.0f, 2.0f,
+      0.75f, {0.05f,0.05f,0.05f}, {{0.05f,0.05f,0.05f}, 0.35f, 0.0f, 1.0f} },
+};
+#define NPLANES ((int)(sizeof(planes)/sizeof(planes[0])))
+
+static void init_scene(void) {
+    for (int i = 0; i < NPLANES; i++) {
+        plane *pl = &planes[i];
+        pl->n = norm(pl->n);
+        pl->u = norm(sub(pl->u, mul(pl->n, dot(pl->u, pl->n))));   // u perp to n
+        pl->v = cross(pl->n, pl->u);
+    }
+}
+
+
+static vec3 light_dir;   // direction to the light (norm)
 
 typedef struct { float t; vec3 p, n; material m; } hit;
 
@@ -75,29 +109,48 @@ static float hit_sphere(const sphere *s, vec3 o, vec3 d) {
     return (t > EPS) ? t : -1.0f;
 }
 
+// Ray/plane: solve dot(o + t*d - p, n) = 0. Two-sided. Returns t or -1.
+static float hit_plane(const plane *pl, vec3 o, vec3 d) {
+    float denom = dot(pl->n, d);
+    if (fabsf(denom) < 1e-6f) return -1.0f;               // ray parallel to plane
+    float t = dot(sub(pl->p, o), pl->n) / denom;
+    if (t <= EPS) return -1.0f;                           // behind the ray / too close
+ 
+    if (pl->hu > 0.0f) {                                  // bounded: check rectangle
+        vec3 rel = sub(add(o, mul(d, t)), pl->p);
+        if (fabsf(dot(rel, pl->u)) > pl->hu) return -1.0f;
+        if (fabsf(dot(rel, pl->v)) > pl->hv) return -1.0f;
+    }
+    return t;
+}
+
 static int scene_hit(vec3 o, vec3 d, hit *h) {
     float best = 1e30f;
-    int which = -1;                       // -1 none, 0..N-1 sphere, NSPHERES = plane
-
+    int which = -1; // 0..NSPHERES-1 sphere, then planes
+ 
     for (int i = 0; i < NSPHERES; i++) {
         float t = hit_sphere(&spheres[i], o, d);
         if (t > 0.0f && t < best) { best = t; which = i; }
     }
-    if (d.y < -1e-4f) {
-        float t = (PLANE_Y - o.y) / d.y;
-        if (t > EPS && t < best) { best = t; which = NSPHERES; }
+    for (int i = 0; i < NPLANES; i++) {
+        float t = hit_plane(&planes[i], o, d);
+        if (t > 0.0f && t < best) { best = t; which = NSPHERES + i; }
     }
     if (which < 0) return 0;
-
+ 
     h->t = best;
     h->p = add(o, mul(d, best));
-    if (which == NSPHERES) {
-        h->n = v3(0, 1, 0);
-        int chk = ((int)floorf(h->p.x) + (int)floorf(h->p.z)) & 1;
-        h->m.col    = chk ? v3(0.85f, 0.85f, 0.85f) : v3(0.25f, 0.25f, 0.25f);
-        h->m.refl   = 0.25f;
-        h->m.transp = 0.0f;
-        h->m.ior    = 1.0f;
+ 
+    if (which >= NSPHERES) {
+        const plane *pl = &planes[which - NSPHERES];
+        h->n = pl->n;
+        h->m = pl->m;
+        if (pl->tile > 0.0f) {
+            vec3 rel = sub(h->p, pl->p);
+            float inv = 1.0f / pl->tile;
+            int chk = ((int)floorf(dot(rel, pl->u) * inv) + (int)floorf(dot(rel, pl->v) * inv)) & 1;
+            if (chk) h->m.col = pl->col2;
+        }
     } else {
         h->n = mul(sub(h->p, spheres[which].c), 1.0f / spheres[which].r);
         h->m = spheres[which].m;
@@ -125,7 +178,8 @@ static vec3 sky(vec3 d) {
 
 // ---------------------------------------------------------------- recursive trace
 static vec3 trace(vec3 o, vec3 d, int depth) {
-    if (depth <= 0) return sky(d);        // cut-off: fall back to sky, not black
+    //if (depth <= 0) return sky(d); // (zero value is "sky")
+    if (depth <= 0) return v3(0.f, 0.f, 0.f);
 
     hit h;
     if (!scene_hit(o, d, &h)) return sky(d);
@@ -259,6 +313,7 @@ int main(void) {
     VIDEO_WaitVSync();
     if (rmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
 
+    init_scene();
     const int W = rmode->fbWidth;
     const int H = rmode->xfbHeight;
 
@@ -270,13 +325,20 @@ int main(void) {
 
     for (int ty = 0; ty < RH; ty += TILE) {
         for (int tx = 0; tx < RW; tx += TILE)
+        {
             render_tile(tx, ty);
 
-        present(xfb, W, H);
+            present(xfb, W, H);
+            VIDEO_WaitVSync(); // visible tiling
+        }
+            
+
+        
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) exit(0);
     }
 
+    // and now we wait to end
     while (SYS_MainLoop()) {
         WPAD_ScanPads();
         if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) exit(0);
