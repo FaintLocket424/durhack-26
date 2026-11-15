@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "file": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/main.c",
+    "arguments": [
+      "/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/devkitPPC/bin/powerpc-eabi-gcc",
+      "-MMD",
+      "-MP",
+      "-MF",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build/main.d",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-DGEKKO",
+      "-mrvl",
+      "-mcpu=750",
+      "-meabi",
+      "-mhard-float",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/wii/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/portlibs/ppc/include",
+      "-I/nix/store/b38ngpw3s8xbagppiq9di879n7r05k8b-devkitPPC/opt/devkitpro/libogc/include",
+      "-I/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+      "-c",
+      "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/src/main.c",
+      "-o",
+      "main.o"
+    ],
+    "directory": "/home/finnaf/Projects/durhack2026/durhack-26/wii-head/build",
+    "output": "main.o"
+  }
+]

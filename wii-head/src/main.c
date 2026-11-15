@@ -154,8 +154,8 @@ static void print_status(const char *my_ip, unsigned elapsed_ms, int complete, i
 	if (finished)
 		line("%s", complete ? "complete." : "INCOMPLETE: all nodes dropped out.");
 
-	unsigned sweeps = done / (IMG_W * IMG_H);
-	printf("\nsweeps: %u   spp: ~%u   elapsed: %us   \n", sweeps, sweeps * SPP_PER_REQ, elapsed);
+	unsigned sweeps = st.done / (IMG_W * IMG_H);
+	printf("\nsweeps: %u   spp: ~%u   elapsed: %us   \n", sweeps, sweeps * SPP_PER_REQ, elapsed_ms);
 	if (finished)
 		printf("all nodes dropped out.              \n\n");
 	else

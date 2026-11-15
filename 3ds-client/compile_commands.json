@@ -1,1 +1,60 @@
-[]
+[
+  {
+    "file": "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/src/handlers.c",
+    "arguments": [
+      "/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
+      "-MMD",
+      "-MP",
+      "-MF",
+      "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build/handlers.d",
+      "-g",
+      "-Wall",
+      "-O2",
+      "-mword-relocations",
+      "-ffunction-sections",
+      "-march=armv6k",
+      "-mtune=mpcore",
+      "-mfloat-abi=hard",
+      "-mtp=soft",
+      "-I/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/portlibs/3ds/include",
+      "-I/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/libctru/include",
+      "-I/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build",
+      "-D__3DS__",
+      "-c",
+      "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/src/handlers.c",
+      "-o",
+      "handlers.o"
+    ],
+    "directory": "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build",
+    "output": "handlers.o"
+  },
+  {
+    "file": "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/src/node.c",
+    "arguments": [
+      "/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
+      "-MMD",
+      "-MP",
+      "-MF",
+      "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build/node.d",
+      "-g",
+      "-Wall",
+      "-O2",
+      "-mword-relocations",
+      "-ffunction-sections",
+      "-march=armv6k",
+      "-mtune=mpcore",
+      "-mfloat-abi=hard",
+      "-mtp=soft",
+      "-I/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/portlibs/3ds/include",
+      "-I/nix/store/yyfacsprjzqwfnlb0v226q0fv86bwbl8-devkitARM/opt/devkitpro/libctru/include",
+      "-I/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build",
+      "-D__3DS__",
+      "-c",
+      "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/src/node.c",
+      "-o",
+      "node.o"
+    ],
+    "directory": "/home/finnaf/Projects/durhack2026/durhack-26/3ds-client/build",
+    "output": "node.o"
+  }
+]
