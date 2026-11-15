@@ -68,6 +68,18 @@ def worker(addr, jobs, img, lock, args, done):
         if n % 25 == 0:
             print(f"{n}/{done[1]} jobs")
 
+def ping_test(addr, count):
+    host, _, port = addr.partition(':')
+    s = socket.create_connection((host, int(port or 5555)), timeout=5)
+    s.settimeout(30)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    times = []
+    for i in range(count):
+        t0 = time.time()
+        request(s, i + 1, 0x0001, b'ping')
+        times.append((time.time() - t0) * 1000)
+    print(f"[{addr}] ping x{count}: min {min(times):.1f} ms  "
+          f"avg {sum(times)/len(times):.1f} ms  max {max(times):.1f} ms")
 
 def main():
     ap = argparse.ArgumentParser()
@@ -79,7 +91,17 @@ def main():
     ap.add_argument('--passes', type=int, default=16, help="requests per tile")
     ap.add_argument('--depth', type=int, default=6)
     ap.add_argument('-o', '--out', default='out.ppm')
+    ap.add_argument('--ping', type=int, metavar='N',
+                    help="just measure network round-trip to each node with N pings, then exit")
     args = ap.parse_args()
+
+    if args.ping:
+        for a in args.nodes:
+            try:
+                ping_test(a, args.ping)
+            except Exception as e:
+                print(f"[{a}] ping failed: {e}")
+        return
 
     img = np.zeros((args.height, args.width, 3), dtype=np.float64)
     jobs = queue.Queue()
