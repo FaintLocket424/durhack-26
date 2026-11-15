@@ -108,48 +108,78 @@
           '';
         };
 
-        deployHelper = pkgs.writeShellApplication {
-          name = "deploy-wiiu";
-          runtimeInputs = with pkgs; [
-            findutils
-            coreutils
-          ];
-          text = ''
-            TARGET_FILE=""
-            IP_ARG=""
+        deployHelper = pkgs.writeShellScriptBin "deploy-wiiu" ''
+                    set -e
+                    export PATH="${devkitPro}/tools/bin:$PATH"
 
-            if [[ "''${1:-}" == *.wuhb ]] || [[ "''${1:-}" == *.rpx ]]; then
-              TARGET_FILE="$1"
-              IP_ARG="''${2:-}"
-            else
-              IP_ARG="''${1:-}"
-              # Prefer .wuhb for Aroma wiiload plugin, fall back to .rpx
-              TARGET_FILE=$(find . -maxdepth 2 -name "*.wuhb" | head -n 1 || true)
-              if [ -z "$TARGET_FILE" ]; then
-                TARGET_FILE=$(find . -maxdepth 2 -name "*.rpx" | head -n 1 || true)
-              fi
-            fi
+                    TARGET_FILE=""
+                    TARGET_HOST=""
 
-            if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
-              echo "No .wuhb or .rpx file found. Run 'build-wiiu' first." >&2
-              exit 1
-            fi
+                    # Handle console aliases or direct IP
+                    case "''${1:-}" in
+                      1|wiiu1|first)
+                        TARGET_HOST="''${WIIU_IP_1:-}"
+                        if [ -z "$TARGET_HOST" ]; then
+                          echo "Error: WIIU_IP_1 is not set in environment." >&2
+                          exit 1
+                        fi
+                        shift
+                        ;;
+                      2|wiiu2|second)
+                        TARGET_HOST="''${WIIU_IP_2:-}"
+                        if [ -z "$TARGET_HOST" ]; then
+                          echo "Error: WIIU_IP_2 is not set in environment." >&2
+                          exit 1
+                        fi
+                        shift
+                        ;;
+                      *)
+                        TARGET_HOST="''${1:-}"
+                        shift || true
+                        ;;
+                    esac
 
-            if [ -n "$IP_ARG" ]; then
-              case "$IP_ARG" in
-                tcp:*) export WIILOAD="$IP_ARG" ;;
-                *)     export WIILOAD="tcp:$IP_ARG" ;;
-              esac
-            fi
+                    if [ -n "''${1:-}" ]; then
+                      TARGET_FILE="$1"
+                    else
+                      # Prefer .wuhb for Aroma, fallback to .rpx
+                      TARGET_FILE=$(find . -maxdepth 2 -name "*.wuhb" | head -n 1 || true)
+                      if [ -z "$TARGET_FILE" ]; then
+                        TARGET_FILE=$(find . -maxdepth 2 -name "*.rpx" | head -n 1 || true)
+                      fi
+                    fi
 
-            if [ -z "''${WIILOAD:-}" ]; then
-              echo "Usage: deploy-wiiu <wiiu-ip> [file.wuhb|file.rpx]  (or export WIILOAD=tcp:<ip>)" >&2
-              exit 1
-            fi
+                    if [ -z "$TARGET_FILE" ] || [ ! -f "$TARGET_FILE" ]; then
+                      echo "No .wuhb or .rpx found. Building..." >&2
+                      build-wiiu
+                      TARGET_FILE=$(find . -maxdepth 2 -name "*.wuhb" | head -n 1 || true)
+                      if [ -z "$TARGET_FILE" ]; then
+                        TARGET_FILE=$(find . -maxdepth 2 -name "*.rpx" | head -n 1 || true)
+                      fi
+                    fi
 
-            wiiload "$TARGET_FILE"
-          '';
-        };
+                    if [ -z "$TARGET_HOST" ] && [ -n "''${WIILOAD:-}" ]; then
+                      TARGET_HOST="$WIILOAD"
+                    fi
+
+                    if [ -z "$TARGET_HOST" ]; then
+                      cat << 'USAGE' >&2
+          Usage:
+            deploy-wiiu <ip> [file.wuhb|file.rpx]
+            deploy-wiiu wiiu1 [file]   (requires WIIU_IP_1 set)
+            deploy-wiiu wiiu2 [file]   (requires WIIU_IP_2 set)
+          USAGE
+                      exit 1
+                    fi
+
+                    case "$TARGET_HOST" in
+                      tcp:*) export WIILOAD="$TARGET_HOST" ;;
+                      *)     export WIILOAD="tcp:$TARGET_HOST" ;;
+                    esac
+
+                    echo "Deploying $TARGET_FILE to $WIILOAD..."
+                    wiiload "$TARGET_FILE"
+        '';
       in
       {
         packages.default = pkgs.stdenv.mkDerivation {
@@ -198,6 +228,10 @@
             export DEVKITPPC="${devkitPpc}"
             export PATH="$DEVKITPRO/tools/bin:$DEVKITPPC/bin:$PATH"
 
+            # Set your console IPs here for quick alias targeting:
+            export WIIU_IP_1="10.215.147.127"
+            export WIIU_IP_2="10.215.147.4"
+
             if [ ! -f .clangd ]; then
               cat > .clangd << 'EOF'
             CompileFlags:
@@ -216,17 +250,11 @@
             ========================================================================
             Environment: Nintendo Wii U (Espresso PowerPC / devkitPPC + wut)
             ------------------------------------------------------------------------
-            Properties:
-              Toolchain   : devkitPPC (powerpc-eabi)
-              SDK         : wut / portlibs/wiiu
-              LSP         : clangd (with --query-driver)
-
             Commands:
-              build-wiiu         Build .wuhb/.rpx + compile_commands.json
-              rebuild-wiiu       Clean build from scratch
-              run-wiiu [file]    Launch .rpx in Cemu (Linux or WSL .exe)
-              deploy-wiiu <ip>   Send .wuhb/.rpx to Wii U via wiiload
-              nix build          Build .wuhb/.rpx package reproducibly
+              build-wiiu                  Build .wuhb/.rpx + compile_commands.json
+              rebuild-wiiu                Clean build from scratch
+              run-wiiu [file]             Launch .rpx in Cemu
+              deploy-wiiu <ip|wiiu1|wiiu2> [file]  Push & run on console via Wiiload
             ========================================================================
             EOF
           '';
