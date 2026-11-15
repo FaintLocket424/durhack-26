@@ -20,6 +20,10 @@
 #include <ogcsys.h>
 #include <gccore.h>
 #include <ogc/lwp_watchdog.h>		// gettime(), TB_MSPERSEC
+#include <network.h>				// net_select()
+#define net_select_compat	net_select	// libogc has no POSIX select() alias
+#else
+#define net_select_compat	select
 #endif
 
 #include "head.h"
@@ -232,7 +236,7 @@ int head_ping(worker_t *w, int n, const uint8_t *payload, uint32_t len, uint32_t
 		uint64_t left = deadline - now;
 
 		struct timeval tv = { .tv_sec = (long)(left / 1000), .tv_usec = (long)(left % 1000) * 1000 };
-		int r = select(maxfd + 1, &rd, &wr, NULL, &tv);
+		int r = net_select_compat(maxfd + 1, &rd, &wr, NULL, &tv);
 
 		if (r < 0) {
 			if (errno == EINTR) continue;
