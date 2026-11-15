@@ -15,7 +15,7 @@ ROLE ?= head
 
 ifeq ($(ROLE),head)
 	TARGET   := head
-	SRCFILES := head_main.c head.c
+	SRCFILES := main.c head.c
 else ifeq ($(ROLE),node)
 	TARGET   := node
 	SRCFILES := main.c node.c handlers.c
