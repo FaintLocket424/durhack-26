@@ -275,14 +275,17 @@ static int recv_result(worker_t *w, int sock, const pending_t *pd, uint8_t *buf,
 	const uint8_t *src = buf + TILE_RESPONSE_PREFIX;
 	LWP_MutexLock(img->lock);
 	for (uint32_t ty = 0; ty < t->h; ty++) {
-		float *dst = img->sum + ((t->y0 + ty) * img->w + t->x0) * 3;
-		if (half) {
-			for (uint32_t i = 0; i < t->w * 3; i++, src += 2)
-				dst[i] += f16_to_f32(get_u16(src));
-		} else {
-			for (uint32_t i = 0; i < t->w * 3; i++, src += 4)
-				dst[i] += get_f32(src);
-		}
+        float    *dst = img->sum + ((t->y0 + ty) * img->w + t->x0) * 3;
+        uint32_t *cnt = img->cnt + (t->y0 + ty) * img->w + t->x0;
+        if (half) {
+            for (uint32_t i = 0; i < t->w * 3; i++, src += 2)
+                dst[i] += f16_to_f32(get_u16(src));
+        } else {
+            for (uint32_t i = 0; i < t->w * 3; i++, src += 4)
+                dst[i] += get_f32(src);
+        }
+        for (uint32_t i = 0; i < t->w; i++)
+            cnt[i]++;
 	}
 	LWP_MutexUnlock(img->lock);
 

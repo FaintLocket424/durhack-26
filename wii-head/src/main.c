@@ -153,6 +153,11 @@ static void print_status(const char *my_ip, unsigned elapsed_ms, int complete, i
 
 	if (finished)
 		line("%s", complete ? "complete." : "INCOMPLETE: all nodes dropped out.");
+
+	unsigned sweeps = done / (IMG_W * IMG_H);
+	printf("\nsweeps: %u   spp: ~%u   elapsed: %us   \n", sweeps, sweeps * SPP_PER_REQ, elapsed);
+	if (finished)
+		printf("all nodes dropped out.              \n\n");
 	else
 		line("HOME to quit");
 }
@@ -176,13 +181,14 @@ static inline uint32_t pack_yuv2(const uint8_t *a, const uint8_t *b) {
 	return ((uint32_t)y0 << 24) | ((uint32_t)cb << 16) | ((uint32_t)y1 << 8) | (uint32_t)cr;
 }
 
-// Raw sums -> average -> gamma (sqrt) -> 8-bit RGB
-//---------------------------------------------------------------------------------
-static void tonemap(const float *sum, uint8_t *rgb) {
-//---------------------------------------------------------------------------------
-	float inv = 1.0f / (float)(SPP_PER_REQ * PASSES);
-	for (int i = 0; i < IMG_W * IMG_H * 3; i++)
-		rgb[i] = (uint8_t)clamp255((int)(sqrtf(sum[i] * inv) * 255.0f + 0.5f));
+static void tonemap(image_t *img, uint8_t *rgb) {
+	LWP_MutexLock(img->lock);
+	for (int p = 0; p < IMG_W * IMG_H; p++) {
+		float inv = img->cnt[p] ? 1.0f / (float)(img->cnt[p] * SPP_PER_REQ) : 0.0f;
+		for (int c = 0; c < 3; c++)
+			rgb[p * 3 + c] = (uint8_t)clamp255((int)(sqrtf(img->sum[p * 3 + c] * inv) * 255.0f + 0.5f));
+	}
+	LWP_MutexUnlock(img->lock);
 }
 
 // Nearest-neighbour stretch of the image over the whole XFB.
@@ -209,7 +215,7 @@ int main(int argc, char **argv) {
 	initialise();
 
 	printf("\x1b[2;0H");
-	printf("Wii render coordinator\n\nconfiguring network... ");
+	//printf("Wii render coordinator\n\nconfiguring network... ");
 
 	char my_ip[16] = {0}, netmask[16] = {0}, gateway[16] = {0};
 	if (if_config(my_ip, netmask, gateway, true, 20) < 0) {
@@ -224,8 +230,9 @@ int main(int argc, char **argv) {
 	img.spp = SPP_PER_REQ;
 	img.depth = MAX_DEPTH;
 	img.sum = calloc(IMG_W * IMG_H * 3, sizeof(float));
+	img.cnt = calloc(IMG_W * IMG_H, sizeof(uint32_t));
 	uint8_t *rgb = malloc(IMG_W * IMG_H * 3);
-	if (!img.sum || !rgb) {
+	if (!img.sum || !img.cnt || !rgb) {
 		printf("out of memory\n");
 		wait_home();
 		return 1;
@@ -242,57 +249,43 @@ int main(int argc, char **argv) {
 		worker_start(&workers[i]);
 	}
 
-	// ---- render phase: status until every worker has finished or died
-	// The console draws every character in software, so redrawing the whole
-	// status screen each frame would take most of the CPU away from the worker
-	// threads. Redraw a few times a second, and keep the UI thread below them.
-	LWP_SetThreadPriority(LWP_GetSelf(), 40);
-	int finished = 0;
-	unsigned elapsed = 0;					// ms
-	unsigned frame = 0;
-	while (SYS_MainLoop() && !finished) {
-		finished = 1;
-		for (int i = 0; i < NUM_WORKERS; i++)
-			if (workers[i].state != W_DONE && workers[i].state != W_DEAD) finished = 0;
+	// ---- render phase: image is the main view, A toggles the status overlay.
+    // Tonemapping and repacking the XFB is CPU heavy, so keep the UI thread
+    // below the workers and only redraw about once a second.
+    LWP_SetThreadPriority(LWP_GetSelf(), 40);
 
-		elapsed = (unsigned)ticks_to_millisecs(gettime() - t0);
-		if (finished || frame++ % STATUS_EVERY == 0) {
-			uint32_t done, total;
-			sched_progress(&done, &total);
-			print_status(my_ip, elapsed, done >= total, finished);
-		}
+    int finished = 0, show_info = 0, redraw = 1;
+    unsigned elapsed = 0;                   // ms
+    unsigned frame = 0;
+    uint32_t last_done = (uint32_t)-1;
 
-		VIDEO_WaitVSync();
-		WPAD_ScanPads();
-		if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) return 0;	// threads die with the process
-	}
-	if (!finished) return 0;				// SYS_MainLoop said exit (reset / power)
+    while (SYS_MainLoop()) {
+        finished = 1;
+        for (int i = 0; i < NUM_WORKERS; i++)
+            if (workers[i].state != W_DONE && workers[i].state != W_DEAD) finished = 0;
 
-	uint32_t done, total;
-	sched_progress(&done, &total);
-	int complete = done >= total;
+        uint32_t done, total;
+        sched_progress(&done, &total);
+        if (!finished) elapsed = (unsigned)ticks_to_millisecs(gettime() - t0);
 
-	// ---- result phase: show the image, A toggles status
-	tonemap(img.sum, rgb);
-	draw_image(rgb);
-	int show_img = 1;
+        // refresh about once a second while rendering, and once more at the end
+        if (++frame % 60 == 0 && done != last_done) redraw = 1;
+        if (finished && last_done != done) redraw = 1;
 
-	while (SYS_MainLoop()) {
-		VIDEO_WaitVSync();
-		WPAD_ScanPads();
-		u32 down = WPAD_ButtonsDown(0);
+        if (redraw) {
+            tonemap(&img, rgb);
+            draw_image(rgb);
+            if (show_info)
+                print_status(my_ip, elapsed, done >= total, finished);
+            last_done = done;
+            redraw = 0;
+        }
 
-		if (down & WPAD_BUTTON_HOME) break;
-		if (down & WPAD_BUTTON_A) {
-			show_img = !show_img;
-			if (show_img) {
-				draw_image(rgb);
-			} else {
-				VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
-				print_status(my_ip, elapsed, complete, 1);
-				printf("A: show image   HOME: quit\n");
-			}
-		}
-	}
-	return 0;
+        VIDEO_WaitVSync();
+        WPAD_ScanPads();
+        u32 down = WPAD_ButtonsDown(0);
+        if (down & WPAD_BUTTON_HOME) break;
+        if (down & WPAD_BUTTON_A) { show_info = !show_info; redraw = 1; }
+    }
+    return 0;
 }

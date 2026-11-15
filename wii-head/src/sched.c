@@ -35,33 +35,31 @@ int sched_next(uint32_t mw, uint32_t mh, tile_t *t) {
 		r = 1;
 	} else {
 		// advance to the first uncovered pixel, starting a new pass when a sweep is full
-		while (pass < passes) {
+		for (;;) {
 			while (scan < W * H && cov[scan]) scan++;
 			if (scan < W * H) break;
-			if (++pass < passes) { memset(cov, 0, W * H); scan = 0; }
+			pass++;
+			memset(cov, 0, W * H);
+			scan = 0;
 		}
 
-		if (pass < passes) {
-			uint32_t x = scan % W, y = scan / W, w = 1, h = 1;
+		uint32_t x = scan % W, y = scan / W, w = 1, h = 1;
 
-			while (w < mw && x + w < W && !cov[scan + w]) w++;	// grow right
+		while (w < mw && x + w < W && !cov[scan + w]) w++;	// grow right
 
-			for (int ok = 1; ok && h < mh && y + h < H; ) {		// grow down
-				for (uint32_t i = 0; i < w; i++)
-					if (cov[(y + h) * W + x + i]) { ok = 0; break; }
-				if (ok) h++;
-			}
-
-			for (uint32_t j = 0; j < h; j++)
-				memset(&cov[(y + j) * W + x], 1, w);
-
-			t->x0 = x; t->y0 = y; t->w = w; t->h = h;
-			t->seed = ++jid * 2654435761u;			// unique per request
-			in_flight++;
-			r = 1;
-		} else {
-			r = in_flight ? 0 : -1;
+		for (int ok = 1; ok && h < mh && y + h < H; ) {		// grow down
+			for (uint32_t i = 0; i < w; i++)
+				if (cov[(y + h) * W + x + i]) { ok = 0; break; }
+			if (ok) h++;
 		}
+
+		for (uint32_t j = 0; j < h; j++)
+			memset(&cov[(y + j) * W + x], 1, w);
+
+		t->x0 = x; t->y0 = y; t->w = w; t->h = h;
+		t->seed = ++jid * 2654435761u;			// unique per request
+		in_flight++;
+		r = 1;
 	}
 
 	LWP_MutexUnlock(lock);

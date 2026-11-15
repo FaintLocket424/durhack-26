@@ -24,6 +24,7 @@ typedef struct {
 	uint32_t w, h;						// full image size
 	uint32_t spp, depth;				// per request
 	float   *sum;						// w*h*3 floats, raw sums (guarded by lock)
+	uint32_t *cnt;	
 	mutex_t  lock;
 } image_t;
 
