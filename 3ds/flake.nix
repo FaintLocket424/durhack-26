@@ -42,6 +42,10 @@
           };
         };
 
+        downloadExamples = pkgs.writeShellScriptBin "download-examples" ''
+          git clone https://github.com/devkitPro/3ds-examples.git devkitpro-examples
+        '';
+
         clangdWrapper = pkgs.lib.hiPrio (
           pkgs.writeShellScriptBin "clangd" ''
             has_query_driver=0
@@ -174,6 +178,7 @@
             clangdWrapper
             pkgs.clang-tools
             buildHelper
+            downloadExamples
             cleanBuildHelper
             runHelper
             deployHelper
