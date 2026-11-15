@@ -1,5 +1,4 @@
 llm_context.md
 .direnv
 .envrc
-result
-flake.lock
+result/*
