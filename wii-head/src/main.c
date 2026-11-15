@@ -12,6 +12,7 @@
 #include <gccore.h>
 #include <wiiuse/wpad.h>
 #include <ogc/if_config.h>
+#include <ogc/lwp_watchdog.h>
 
 #include "sched.h"
 #include "worker.h"
