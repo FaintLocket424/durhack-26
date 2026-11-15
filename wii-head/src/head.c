@@ -19,6 +19,7 @@
 #ifdef GEKKO
 #include <ogcsys.h>
 #include <gccore.h>
+#include <ogc/lwp_watchdog.h>		// gettime(), TB_MSPERSEC
 #endif
 
 #include "head.h"
@@ -27,7 +28,7 @@
 static uint64_t now_ms(void) {
 //---------------------------------------------------------------------------------
 #ifdef GEKKO
-	return (uint64_t)ticks_to_millisecs(gettime());
+	return (uint64_t)gettime() / TB_MSPERSEC;	// ticks_to_millisecs() truncates to u32
 #else
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
