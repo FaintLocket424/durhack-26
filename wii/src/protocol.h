@@ -28,7 +28,7 @@
 typedef enum {
 	MSG_PING        = 0x0001,
 	MSG_PONG        = 0x0002,
-	// raytracer, later:
+	// raytracer
 	MSG_RENDER_TILE = 0x0010,				// camera/scene params + tile rectangle
 	MSG_TILE_RESULT = 0x0011,				// pixels for that tile
 	MSG_ERROR       = 0xFFFF				// payload: u32 = -(proto_status_t)
