@@ -20,6 +20,7 @@
 #define PROTOCOL_H
 
 #include <stdint.h>
+#include <string.h>
 
 #define PROTO_MAGIC			0x57525431u
 #define PROTO_HEADER_SIZE	16
@@ -40,7 +41,8 @@ typedef enum {
 	PROTO_ERR_TOO_LARGE    = -2,
 	PROTO_ERR_UNKNOWN_TYPE = -3,
 	PROTO_ERR_BAD_PAYLOAD  = -4,
-	PROTO_ERR_NOMEM        = -5
+	PROTO_ERR_NOMEM        = -5,
+	PROTO_ERR_ABORTED      = -6			// node is shutting down mid-render
 } proto_status_t;
 
 typedef struct {
@@ -108,6 +110,37 @@ static inline proto_status_t proto_decode_header(const uint8_t in[PROTO_HEADER_S
 
 	if (h->payload_len > PROTO_MAX_PAYLOAD) return PROTO_ERR_TOO_LARGE;
 	return PROTO_OK;
+}
+
+
+//---------------------------------------------------------------------------------
+// MSG_RENDER_TILE request payload: 9 x u32, big-endian
+//   x0 y0 w h          tile rectangle in full-image pixels (origin top-left)
+//   full_w full_h      resolution of the whole image (defines camera / aspect)
+//   spp                samples per pixel to take in this request
+//   seed               RNG seed. Use a different seed for every request, or
+//                      two requests for the same tile return identical noise
+//   max_depth          bounce limit per path
+//
+// MSG_TILE_RESULT payload: 5 x u32 echo (x0 y0 w h spp), followed by w*h*3
+// big-endian IEEE754 floats (R,G,B, row-major): the SUM of the spp samples per
+// pixel, linear light, NOT divided and NOT gamma corrected. The coordinator
+// adds sums from different requests and divides by the total sample count.
+//---------------------------------------------------------------------------------
+#define TILE_REQUEST_SIZE		36
+#define TILE_RESPONSE_PREFIX	20
+
+static inline void put_f32(uint8_t *p, float v) {
+	uint32_t u;
+	memcpy(&u, &v, sizeof u);
+	put_u32(p, u);
+}
+
+static inline float get_f32(const uint8_t *p) {
+	uint32_t u = get_u32(p);
+	float v;
+	memcpy(&v, &u, sizeof v);
+	return v;
 }
 
 #endif

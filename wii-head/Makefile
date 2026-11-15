@@ -6,24 +6,8 @@ endif
 
 include $(DEVKITPPC)/wii_rules
 
-# Two programs share this source tree and both define main(), so a *.c wildcard
-# would link them together. Pick one with ROLE:
-#   make              -> head.dol  (coordinator: pings / drives the workers)
-#   make ROLE=node    -> node.dol  (worker: listens on NODE_PORT, runs handlers)
-#   make both         -> builds both, each in its own build directory
-ROLE ?= head
-
-ifeq ($(ROLE),head)
-	TARGET   := head
-	SRCFILES := main.c head.c
-else ifeq ($(ROLE),node)
-	TARGET   := node
-	SRCFILES := main.c node.c handlers.c
-else
-$(error "ROLE must be 'head' or 'node' (got '$(ROLE)')")
-endif
-
-BUILD    := build_$(ROLE)
+TARGET   := app
+BUILD    := build
 SOURCES  := src
 DATA     :=
 INCLUDES :=
@@ -43,9 +27,9 @@ export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
                   $(foreach dir,$(DATA),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
-CFILES   := $(filter %.c,$(SRCFILES))
-CPPFILES := $(filter %.cpp,$(SRCFILES))
-SFILES   := $(filter %.s,$(SRCFILES))
+CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
 ifeq ($(strip $(CPPFILES)),)
@@ -62,25 +46,20 @@ export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                    $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
                    -I$(LIBOGC_INC) \
-                   -I$(CURDIR)/$(SOURCES) \
                    -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib) \
                    -L$(LIBOGC_LIB)
 
-.PHONY: $(BUILD) clean all both
+.PHONY: $(BUILD) clean all
 
 all: $(BUILD)
-
-both:
-	@$(MAKE) --no-print-directory ROLE=head
-	@$(MAKE) --no-print-directory ROLE=node
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 clean:
-	@rm -fr build_head build_node head.dol head.elf node.dol node.elf *.map
+	@rm -fr $(BUILD) $(TARGET).dol $(TARGET).elf *.map
 
 else
 
