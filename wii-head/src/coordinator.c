@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <ogc/lwp_watchdog.h>
 #include <gccore.h>
 
 #include "coordinator.h"
