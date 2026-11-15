@@ -23,10 +23,10 @@
 // .no_f16    1 = ask for full f32 pixels (twice the data). Only for debugging;
 //            nodes without half-float support fall back to f32 automatically.
 static worker_t workers[] = {
-	{ .ip = "10.215.147.254", .port = 5555, .tile_w = 64, .tile_h = 64, .pipeline = 2 },
+	{ .ip = "10.215.147.254", .port = 5555, .tile_w = 24, .tile_h = 16, .pipeline = 2 },
 	// CHECK these against the address each 3DS shows on its screen; hotspot DHCP can change them
-	{ .ip = "10.215.147.67", .port = 5555, .tile_w = 16, .tile_h = 16, .pipeline = 1 },
-	{ .ip = "10.215.147.175", .port = 5555, .tile_w = 16, .tile_h = 16, .pipeline = 1 },
+	{ .ip = "10.215.147.67", .port = 5555, .tile_w = 16, .tile_h = 16, .pipeline = 2 },
+	{ .ip = "10.215.147.175", .port = 5555, .tile_w = 16, .tile_h = 16, .pipeline = 2 },
 };
 #define NUM_WORKERS ((int)(sizeof workers / sizeof workers[0]))
 
