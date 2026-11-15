@@ -1,5 +1,6 @@
 llm_context.md
 .direnv
 .envrc
-result/*
+**/result/*
 *.ppm
+**/build/
